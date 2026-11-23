@@ -37,11 +37,12 @@ function scene(){}
 function clear(){clearInterval(clock);playing=false;$('panel').replaceChildren();$('actions').replaceChildren();$('msg').textContent='';document.querySelectorAll('#scene button').forEach(b=>b.remove())}
 function panel(title,body){let h=document.createElement('h2'),p=document.createElement('p');h.textContent=title;p.textContent=body;$('panel').append(h,p)}
 
-let opening=false;
+let opening=false, lastDoor=1;
 async function openDoor(number=1){
   if(opening||document.body.classList.contains('inside'))return;
   const door=dayGrid.children[number-1];
   if(!door||door.disabled)return;
+  lastDoor=number;
   opening=true;
   door.classList.add('revealing');
   const stage=$('stage'), leaf=door.querySelector('.leaf');
@@ -67,7 +68,24 @@ async function openDoor(number=1){
   if(number===1) start(); else {clear();panel('Türchen '+number,'Diese Challenge folgt in der vollständigen Geschichte.');}
   $('panel').focus({preventScroll:true});
 }
-$('back').onclick=home;
+async function returnToCalendar(){
+  if(opening)return;
+  opening=true;
+  try {
+    home();
+    const door=dayGrid.children[lastDoor-1],stage=$('stage');
+    door.focus({preventScroll:true});
+    if(!stage.animate||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    $('frame').scrollIntoView({block:'center',behavior:'instant'});
+    const view=stage.getBoundingClientRect(),slot=door.getBoundingClientRect();
+    const x=slot.left-view.left+slot.width/2,y=slot.top-view.top+slot.height/2;
+    stage.style.transformOrigin=x+'px '+y+'px';
+    const scale=Math.max(view.width/slot.width,view.height/slot.height);
+    const zoom='translate('+(view.width/2-x)+'px,'+(view.height/2-y)+'px) scale('+scale+')';
+    await stage.animate([{transform:zoom,opacity:.15},{transform:'none',opacity:1}],{duration:2000,easing:'ease-in-out'}).finished;
+  } finally {opening=false}
+}
+$('back').onclick=returnToCalendar;
 
 const places=[[243,411],[942,1176],[198,305],[98,842],[573,236],[710,1370],[337,1074],[41,404],[735,115],[253,1221],[200,946],[380,146],[897,1453],[682,257],[63,1260],[288,228],[497,1458],[555,84],[267,1014],[496,1284],[140,407],[939,133],[477,334],[739,1268]];
 function grid(){dayGrid.replaceChildren();for(let i=1;i<=24;i++){let b=document.createElement('button');b.textContent=i===1&&progress.done?'1 ✓':i;b.disabled=!$('test').checked&&dateKey<20261200+i;b.title=i===1?'Erstes Türchen':'Für die gemeinsame Ausarbeitung vorgesehen';const leaf=document.createElement('span');leaf.className='leaf';b.replaceChildren(leaf);b.setAttribute('aria-label','Türchen '+i);const [x,y]=places[i-1];
@@ -75,7 +93,7 @@ b.style.left=x/1024*100+'%';b.style.top=y/1536*100+'%';
 b.style.setProperty('--crop',((x-40)/944*100)+'% '+((y-40)/1456*100)+'%');b.onclick=()=>openDoor(i);dayGrid.append(b)}}
 function home(){document.body.classList.remove('inside');clear();let d=worlds[w];$('tag').textContent=d[2];$('title').textContent=d[1];$('intro').textContent=d[3];try{progress=JSON.parse(localStorage.getItem('advent26-v1-'+w))||{}}catch{progress={}}$('saved').textContent=progress.done?'1 von 24 geöffnet':'';scene();grid();if($('test').checked||dateKey>=20261201)act(progress.done?'Erstes Türchen erneut spielen':'Erstes Türchen öffnen',()=>openDoor(1))}
 function start(){clear();let d=worlds[w];panel(d[4],d[5]);if(w===4)act('Suche starten · 60 Sekunden',hunt);else for(let i=0;i<2;i++)act(d[6+i],()=>{choice=i;clear();panel(d[4],d[8+i]);if(w===3)code();else act(['Zum Spielertunnel','Den ersten Halt ausrufen','Zum Dorfbrunnen'][w],()=>finish(d[10+i]))});$('panel').scrollIntoView({block:'center'})}
-function finish(s){clear();progress={done:true,choice,ending:s};save();panel('Erste Seite im Winteralbum',s);grid();act('Zur Kalenderwelt',home)}
+function finish(s){clear();progress={done:true,choice,ending:s};save();panel('Erste Seite im Winteralbum',s);grid();act('Zur Kalenderwelt',returnToCalendar)}
 function code(){let keys=choice?['Mitte','Links','Rechts']:['Rechts','Mitte','Links'];sequence=[];$('msg').textContent='Funkfolge merken: '+keys.join(' → ');act('Funkfolge eingeben',()=>{$('actions').replaceChildren();$('msg').textContent='Tippe die drei Sektoren in der richtigen Reihenfolge.';for(let k of ['Links','Mitte','Rechts'])act(k,()=>{if(k!==keys[sequence.length]){sequence=[];$('msg').textContent='Funkstörung. Noch einmal: '+keys.join(' → ');return}sequence.push(k);$('msg').textContent=sequence.join(' → ');if(sequence.length===3)finish(worlds[w][10+choice])})})}
 const objects=[['Schlüssel','🗝️',73,54],['Brief','✉️',27,82],['Taschenuhr','⌚',88,86],['Garn','🧶',9,74],['Kerze','🕯️',37,58],['Pinsel','🖌️',54,77],['Feder','🪶',60,28],['Brille','👓',35,28],['Tasse','☕',66,88]];
 function hunt(){clear();playing=true;found=[];hints=0;deadline=Date.now()+60000;panel('Das verlassene Atelier','Finde Schlüssel, Brief und Taschenuhr im Bild.');function tick(){let left=Math.ceil((deadline-Date.now())/1000);if(left<=0){clear();panel('Die Atelieruhr schlägt','Du kannst die Suche noch einmal beginnen.');act('Erneut suchen',hunt);return false}$('msg').textContent=left+' s · '+found.length+'/3 gefunden · '+hints+' Hinweise';return true}objects.forEach(([name,icon,x,y],i)=>{let b=document.createElement('button');b.textContent=icon;b.setAttribute('aria-label',name);b.style.left=x+'%';b.style.top=y+'%';b.dataset.obj=i;$('scene').append(b);b.onclick=()=>{if(!playing||!tick()||i>2||found.includes(i))return;found.push(i);b.hidden=true;if(found.length===3){let points=Math.max(0,300+Math.ceil((deadline-Date.now())/1000)*5-hints*50);finish('Unter dem Brief liegt eine Eintrittskarte für zwei. Deine erste Albumseite ist komplett. '+points+' Punkte.')}else tick()}});act('Hinweis · −50 Punkte',()=>{if(!tick())return;let b=[...document.querySelectorAll('#scene button')].slice(0,3).find(b=>!b.hidden);if(!b.classList.contains('hint')){b.classList.add('hint');hints++}tick()});clock=setInterval(tick,250);tick();$('scene').scrollIntoView({block:'center'})}
